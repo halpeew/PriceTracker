@@ -198,7 +198,7 @@ class App:
                 name,
                 f"${price}",
                 f"${net}",
-                f"${byno_price}" if byno_price != "-" else "-",
+                f"₺{byno_price}" if byno_price != "-" else "-",
                 "Yes" if item["tradable"] else "No"
             ))
 
