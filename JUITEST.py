@@ -2,13 +2,75 @@ import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 from playwright.sync_api import sync_playwright
 import requests
+import json
+import os
+import time
+import threading
+import re
 
 STEAM_ID = "76561199444639492"
 BYNO_API_URL = "https://apilisting.bynogame.com/1010000730-all?apikey=79fca698bf8bb963c91074e3b69e79243c96a61b8b3ef5a08de410ef8e7a32a4"
 
+CACHE_FILE = "price_cache.json"
+CACHE_DURATION = 3600
+
+
+# ---------------- UTIL ----------------
+
+def normalize_name(name):
+    name = name.lower()
+    name = re.sub(r"\s+", " ", name)
+    return name.strip()
+
+
+def calculate_steam_net(price):
+    fee = max(0.01, price * 0.15)
+    return round(price - fee, 2)
+
+
+# ---------------- CACHE ----------------
+
+def load_cache():
+    if os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+
+def save_cache(cache):
+    with open(CACHE_FILE, "w") as f:
+        json.dump(cache, f)
+
+
+def get_cached_price(cache, name):
+
+    if name not in cache:
+        return None
+
+    data = cache[name]
+
+    if time.time() - data["time"] > CACHE_DURATION:
+        return None
+
+    return data["price"]
+
+
+def set_cached_price(cache, name, price):
+    cache[name] = {
+        "price": price,
+        "time": time.time()
+    }
+
+
 # ---------------- INVENTORY ----------------
+
 def fetch_inventory():
+
     with sync_playwright() as p:
+
         browser = p.chromium.launch(headless=False)
         context = browser.new_context(storage_state="steam_session.json")
         page = context.new_page()
@@ -16,18 +78,25 @@ def fetch_inventory():
         inventory_data = {}
 
         def handle_response(response):
+
             if "/inventory/" in response.url and "730/2" in response.url:
+
                 try:
                     data = response.json()
+
                     if data.get("success"):
                         nonlocal inventory_data
                         inventory_data = data
+
                 except:
                     pass
 
         page.on("response", handle_response)
+
         page.goto(f"https://steamcommunity.com/profiles/{STEAM_ID}/inventory/#730_2")
+
         page.wait_for_timeout(8000)
+
         browser.close()
 
     if not inventory_data:
@@ -37,12 +106,16 @@ def fetch_inventory():
     descriptions = inventory_data["descriptions"]
 
     desc_map = {}
+
     for d in descriptions:
         desc_map[(d["classid"], d["instanceid"])] = d
 
     items = []
+
     for a in assets:
+
         d = desc_map.get((a["classid"], a["instanceid"]))
+
         if not d:
             continue
 
@@ -55,8 +128,11 @@ def fetch_inventory():
 
 
 # ---------------- STEAM PRICE ----------------
+
 def get_market_price(name):
+
     url = "https://steamcommunity.com/market/priceoverview/"
+
     params = {
         "appid": 730,
         "currency": 1,
@@ -64,20 +140,34 @@ def get_market_price(name):
     }
 
     try:
+
         r = requests.get(url, params=params, timeout=10)
+
         data = r.json()
+
         if data.get("success"):
-            return float(data["lowest_price"].replace("$", ""))
+
+            price = data.get("lowest_price")
+
+            if not price:
+                return 0.0
+
+            return float(price.replace("$", ""))
+
     except:
         pass
 
     return 0.0
 
 
-# ---------------- BYNOGAME PRICE (GLOBAL FETCH) ----------------
+# ---------------- BYNOGAME ----------------
+
 def fetch_bynogame_prices():
+
     try:
+
         r = requests.get(BYNO_API_URL, timeout=20)
+
         data = r.json()
 
         price_map = {}
@@ -85,7 +175,8 @@ def fetch_bynogame_prices():
         listings = data.get("data", [])
 
         for item in listings:
-            name = item.get("name", "").strip().lower()
+
+            name = normalize_name(item.get("name", ""))
             price = item.get("price")
 
             if not name or price is None:
@@ -93,35 +184,39 @@ def fetch_bynogame_prices():
 
             price = float(price)
 
-            # aynı itemden birden fazla varsa en düşüğü al
             if name not in price_map:
                 price_map[name] = price
             else:
                 price_map[name] = min(price_map[name], price)
 
-        print(f"[BYNO] Toplam çekilen item: {len(price_map)}")
+        print("[BYNO] items:", len(price_map))
 
         return price_map
 
     except Exception as e:
+
         print("BYNO ERROR:", e)
+
         return {}
 
 
 # ---------------- UI ----------------
+
 class App:
 
     def __init__(self, root):
+
         self.root = root
+
         self.root.title("CS2 Trade & Profit Tracker PRO")
         self.root.geometry("1450x750")
         self.root.configure(bg="#1e1e1e")
 
-        self.price_cache = {}
+        self.price_cache = load_cache()
         self.byno_prices = {}
         self.items_data = []
+        self.last_inventory = set()
 
-        # TOP PANEL
         top_frame = tk.Frame(root, bg="#1e1e1e")
         top_frame.pack(fill="x")
 
@@ -132,14 +227,13 @@ class App:
             bg="#1e1e1e",
             font=("Segoe UI", 14, "bold")
         )
+
         self.total_value_label.pack(side="right", padx=20, pady=10)
 
-        # TABLE
         self.tree = ttk.Treeview(
             root,
             columns=("name", "price", "net", "byno", "tradable"),
-            show="headings",
-            selectmode="extended"
+            show="headings"
         )
 
         self.tree.heading("name", text="Item")
@@ -156,7 +250,6 @@ class App:
 
         self.tree.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # BUTTONS
         bottom = tk.Frame(root, bg="#1e1e1e")
         bottom.pack(fill="x")
 
@@ -166,33 +259,47 @@ class App:
         self.refresh()
 
     # ---------------- REFRESH ----------------
+
     def refresh(self):
+        threading.Thread(target=self._refresh_worker).start()
+
+    def _refresh_worker(self):
+
         self.tree.delete(*self.tree.get_children())
-        self.items_data.clear()
 
         items = fetch_inventory()
 
-        # 🔥 Bynogame fiyatlarını 1 kere çekiyoruz
+        current_inventory = set([i["name"] for i in items])
+
+        if current_inventory != self.last_inventory:
+            print("Inventory değişti → cache temizleniyor")
+            self.price_cache.clear()
+
+        self.last_inventory = current_inventory
+
         self.byno_prices = fetch_bynogame_prices()
 
         total_value = 0
 
         for item in items:
-            name = item["name"]
-            normalized_name = name.strip().lower()
 
-            # Steam price
-            if name in self.price_cache:
-                price = self.price_cache[name]
+            name = item["name"]
+
+            cached = get_cached_price(self.price_cache, name)
+
+            if cached is not None:
+                price = cached
             else:
                 price = get_market_price(name)
-                self.price_cache[name] = price
+                set_cached_price(self.price_cache, name, price)
 
-            net = round(price * 0.85, 2)
+            net = calculate_steam_net(price)
+
             total_value += net
 
-            # Bynogame price
-            byno_price = self.byno_prices.get(normalized_name, "-")
+            normalized = normalize_name(name)
+
+            byno_price = self.byno_prices.get(normalized, "-")
 
             row_id = self.tree.insert("", "end", values=(
                 name,
@@ -210,10 +317,14 @@ class App:
 
         self.total_value_label.config(text=f"Total Value: ${round(total_value,2)}")
 
-    # ---------------- THIRD PARTY ANALYSIS ----------------
+        save_cache(self.price_cache)
+
+    # ---------------- ANALYSIS ----------------
+
     def third_party_analysis(self):
 
         selected = self.tree.selection()
+
         if not selected:
             messagebox.showwarning("Uyarı", "En az bir item seçmelisin.")
             return
@@ -227,13 +338,17 @@ class App:
         count = 0
 
         for row in selected:
+
             for item in self.items_data:
+
                 if item["row"] == row:
                     total_current += item["net"]
                     count += 1
 
         total_buy = buy_price * count
+
         profit = total_current - total_buy
+
         percent = (profit / total_buy * 100) if total_buy != 0 else 0
 
         result_text = (
@@ -251,5 +366,7 @@ class App:
 
 
 root = tk.Tk()
+
 app = App(root)
+
 root.mainloop()
