@@ -7,10 +7,9 @@ from dotenv import load_dotenv
 import getpass
 from pathlib import Path
 
+# ========== GÜVENLI SESSION YOLU ==========
 def get_session_path():
-    # Windows: C:\Users\{username}\AppData\Local\PriceTracker
-    # Mac/Linux: ~/.local/share/PriceTracker
-    
+    """Kullanıcı-spesifik, güvenli session yolu"""
     username = getpass.getuser()
     
     if os.name == 'nt':  # Windows
@@ -19,21 +18,19 @@ def get_session_path():
         base_path = Path.home() / '.local' / 'share' / 'PriceTracker'
     
     base_path.mkdir(parents=True, exist_ok=True)
-
-    os.chmod(base_path, 0o700)
+    os.chmod(base_path, 0o700)  # Sadece bu kullanıcı okuyabilsin
     
     return base_path / f"steam_session_{username}.json"
-context = browser.new_context(storage_state=str(get_session_path()))
 
 load_dotenv()
 STEAM_ID = os.getenv("STEAM_ID")
 BYNO_API_URL = os.getenv("BYNO_API_URL")
 
-# ---------------- INVENTORY ----------------
+# ========== INVENTORY ================
 def fetch_inventory():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False)
-        context = browser.new_context(storage_state="steam_session.json")
+        context = browser.new_context(storage_state=str(get_session_path()))
         page = context.new_page()
 
         inventory_data = {}
@@ -77,7 +74,7 @@ def fetch_inventory():
     return items
 
 
-# ---------------- STEAM PRICE ----------------
+# ========== STEAM PRICE ================
 def get_market_price(name):
     url = "https://steamcommunity.com/market/priceoverview/"
     params = {
@@ -97,7 +94,7 @@ def get_market_price(name):
     return 0.0
 
 
-# ---------------- BYNOGAME PRICE (GLOBAL FETCH) ----------------
+# ========== BYNOGAME PRICE (GLOBAL FETCH) ================
 def fetch_bynogame_prices():
     try:
         r = requests.get(BYNO_API_URL, timeout=20)
@@ -131,7 +128,7 @@ def fetch_bynogame_prices():
         return {}
 
 
-# ---------------- UI ----------------
+# ========== UI ================
 class App:
 
     def __init__(self, root):
@@ -188,7 +185,7 @@ class App:
 
         self.refresh()
 
-    # ---------------- REFRESH ----------------
+    # ========== REFRESH ================
     def refresh(self):
         self.tree.delete(*self.tree.get_children())
         self.items_data.clear()
@@ -233,7 +230,7 @@ class App:
 
         self.total_value_label.config(text=f"Total Value: ${round(total_value,2)}")
 
-    # ---------------- THIRD PARTY ANALYSIS ----------------
+    # ========== THIRD PARTY ANALYSIS ================
     def third_party_analysis(self):
 
         selected = self.tree.selection()
