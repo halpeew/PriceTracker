@@ -2,9 +2,12 @@ import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 from playwright.sync_api import sync_playwright
 import requests
+import os
+from dotenv import load_dotenv
 
-STEAM_ID = "76561199444639492"
-BYNO_API_URL = "https://apilisting.bynogame.com/1010000730-all?apikey=79fca698bf8bb963c91074e3b69e79243c96a61b8b3ef5a08de410ef8e7a32a4"
+load_dotenv()
+STEAM_ID = os.getenv("STEAM_ID")
+BYNO_API_URL = os.getenv("BYNO_API_URL")
 
 # ---------------- INVENTORY ----------------
 def fetch_inventory():
