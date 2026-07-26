@@ -3,7 +3,7 @@ from tkinter import ttk, messagebox, simpledialog
 from playwright.sync_api import sync_playwright
 import requests
 
-STEAM_ID = "76561199444639492"
+STEAM_ID = "YOUR_STEAM_ID_HERE"
 BYNO_API_URL = "https://apilisting.bynogame.com/1010000730-all?apikey=79fca698bf8bb963c91074e3b69e79243c96a61b8b3ef5a08de410ef8e7a32a4"
 
 # ---------------- INVENTORY ----------------
