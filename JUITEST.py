@@ -29,7 +29,7 @@ BYNO_API_URL = os.getenv("BYNO_API_URL")
 # ========== INVENTORY ================
 def fetch_inventory():
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
+        browser = p.chromium.launch(headless=True)  # ✅ FİX #1: headless=True
         context = browser.new_context(storage_state=str(get_session_path()))
         page = context.new_page()
 
@@ -42,12 +42,12 @@ def fetch_inventory():
                     if data.get("success"):
                         nonlocal inventory_data
                         inventory_data = data
-                except:
+                except requests.exceptions.JSONDecodeError:  # ✅ FIX #3: Spesifik exception
                     pass
 
         page.on("response", handle_response)
         page.goto(f"https://steamcommunity.com/profiles/{STEAM_ID}/inventory/#730_2")
-        page.wait_for_timeout(8000)
+        page.wait_for_timeout(15000)  # ✅ FIX #2: 8000 -> 15000 (timeout artırıldı)
         browser.close()
 
     if not inventory_data:
@@ -88,7 +88,11 @@ def get_market_price(name):
         data = r.json()
         if data.get("success"):
             return float(data["lowest_price"].replace("$", ""))
-    except:
+    except requests.RequestException as e:  # ✅ FIX #3: Spesifik exception
+        print(f"[STEAM API] Request Error: {e}")
+        pass
+    except ValueError as e:  # ✅ FIX #3: Float dönüşüm hatası
+        print(f"[STEAM API] Parse Error: {e}")
         pass
 
     return 0.0
@@ -111,7 +115,11 @@ def fetch_bynogame_prices():
             if not name or price is None:
                 continue
 
-            price = float(price)
+            try:
+                price = float(price)  # ✅ FIX #3: Exception handling
+            except ValueError:
+                print(f"[BYNO] Geçersiz fiyat: {price}")
+                continue
 
             # aynı itemden birden fazla varsa en düşüğü al
             if name not in price_map:
@@ -123,8 +131,11 @@ def fetch_bynogame_prices():
 
         return price_map
 
-    except Exception as e:
-        print("BYNO ERROR:", e)
+    except requests.RequestException as e:  # ✅ FIX #3: Spesifik exception
+        print(f"[BYNO] Request Error: {e}")
+        return {}
+    except ValueError as e:  # ✅ FIX #3: JSON parse hatası
+        print(f"[BYNO] JSON Parse Error: {e}")
         return {}
 
 
@@ -238,9 +249,18 @@ class App:
             messagebox.showwarning("Uyarı", "En az bir item seçmelisin.")
             return
 
+        # ✅ FIX #4: Geliştirilmiş input validasyonu
+        buy_price_str = simpledialog.askstring("Alım Fiyatı", "Alım fiyatınız kaçtı? (adet başı)")
+        
+        if buy_price_str is None:  # Cancel tuşuna basarsa
+            return
+        
         try:
-            buy_price = float(simpledialog.askstring("Alım Fiyatı", "Alım fiyatınız kaçtı? (adet başı)"))
-        except:
+            buy_price = float(buy_price_str)
+            if buy_price < 0:  # Negatif kontrol
+                raise ValueError("Fiyat negatif olamaz")
+        except ValueError as e:
+            messagebox.showerror("Hata", f"Geçersiz fiyat girişi: {e}")
             return
 
         total_current = 0
