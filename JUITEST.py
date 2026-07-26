@@ -4,6 +4,26 @@ from playwright.sync_api import sync_playwright
 import requests
 import os
 from dotenv import load_dotenv
+import getpass
+from pathlib import Path
+
+def get_session_path():
+    # Windows: C:\Users\{username}\AppData\Local\PriceTracker
+    # Mac/Linux: ~/.local/share/PriceTracker
+    
+    username = getpass.getuser()
+    
+    if os.name == 'nt':  # Windows
+        base_path = Path(os.getenv('APPDATA')) / 'PriceTracker'
+    else:  # Mac/Linux
+        base_path = Path.home() / '.local' / 'share' / 'PriceTracker'
+    
+    base_path.mkdir(parents=True, exist_ok=True)
+
+    os.chmod(base_path, 0o700)
+    
+    return base_path / f"steam_session_{username}.json"
+context = browser.new_context(storage_state=str(get_session_path()))
 
 load_dotenv()
 STEAM_ID = os.getenv("STEAM_ID")
