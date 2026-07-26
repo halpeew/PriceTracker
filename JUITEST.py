@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 import getpass
 from pathlib import Path
 
-# ========== GÜVENLI SESSION YOLU ==========
 def get_session_path():
     """Kullanıcı-spesifik, güvenli session yolu"""
     username = getpass.getuser()
@@ -18,7 +17,7 @@ def get_session_path():
         base_path = Path.home() / '.local' / 'share' / 'PriceTracker'
     
     base_path.mkdir(parents=True, exist_ok=True)
-    os.chmod(base_path, 0o700)  # Sadece bu kullanıcı okuyabilsin
+    os.chmod(base_path, 0o700) 
     
     return base_path / f"steam_session_{username}.json"
 
@@ -26,10 +25,10 @@ load_dotenv()
 STEAM_ID = os.getenv("STEAM_ID")
 BYNO_API_URL = os.getenv("BYNO_API_URL")
 
-# ========== INVENTORY ================
+
 def fetch_inventory():
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)  # ✅ FİX #1: headless=True
+        browser = p.chromium.launch(headless=True) 
         context = browser.new_context(storage_state=str(get_session_path()))
         page = context.new_page()
 
@@ -42,12 +41,12 @@ def fetch_inventory():
                     if data.get("success"):
                         nonlocal inventory_data
                         inventory_data = data
-                except requests.exceptions.JSONDecodeError:  # ✅ FIX #3: Spesifik exception
+                except requests.exceptions.JSONDecodeError:
                     pass
 
         page.on("response", handle_response)
         page.goto(f"https://steamcommunity.com/profiles/{STEAM_ID}/inventory/#730_2")
-        page.wait_for_timeout(15000)  # ✅ FIX #2: 8000 -> 15000 (timeout artırıldı)
+        page.wait_for_timeout(15000)  
         browser.close()
 
     if not inventory_data:
@@ -74,7 +73,7 @@ def fetch_inventory():
     return items
 
 
-# ========== STEAM PRICE ================
+
 def get_market_price(name):
     url = "https://steamcommunity.com/market/priceoverview/"
     params = {
@@ -88,17 +87,17 @@ def get_market_price(name):
         data = r.json()
         if data.get("success"):
             return float(data["lowest_price"].replace("$", ""))
-    except requests.RequestException as e:  # ✅ FIX #3: Spesifik exception
+    except requests.RequestException as e: 
         print(f"[STEAM API] Request Error: {e}")
         pass
-    except ValueError as e:  # ✅ FIX #3: Float dönüşüm hatası
+    except ValueError as e: 
         print(f"[STEAM API] Parse Error: {e}")
         pass
 
     return 0.0
 
 
-# ========== BYNOGAME PRICE (GLOBAL FETCH) ================
+
 def fetch_bynogame_prices():
     try:
         r = requests.get(BYNO_API_URL, timeout=20)
@@ -116,12 +115,12 @@ def fetch_bynogame_prices():
                 continue
 
             try:
-                price = float(price)  # ✅ FIX #3: Exception handling
+                price = float(price)  
             except ValueError:
                 print(f"[BYNO] Geçersiz fiyat: {price}")
                 continue
 
-            # aynı itemden birden fazla varsa en düşüğü al
+            
             if name not in price_map:
                 price_map[name] = price
             else:
@@ -131,15 +130,15 @@ def fetch_bynogame_prices():
 
         return price_map
 
-    except requests.RequestException as e:  # ✅ FIX #3: Spesifik exception
+    except requests.RequestException as e:  
         print(f"[BYNO] Request Error: {e}")
         return {}
-    except ValueError as e:  # ✅ FIX #3: JSON parse hatası
+    except ValueError as e: 
         print(f"[BYNO] JSON Parse Error: {e}")
         return {}
 
 
-# ========== UI ================
+
 class App:
 
     def __init__(self, root):
@@ -152,7 +151,6 @@ class App:
         self.byno_prices = {}
         self.items_data = []
 
-        # TOP PANEL
         top_frame = tk.Frame(root, bg="#1e1e1e")
         top_frame.pack(fill="x")
 
@@ -165,7 +163,7 @@ class App:
         )
         self.total_value_label.pack(side="right", padx=20, pady=10)
 
-        # TABLE
+        
         self.tree = ttk.Treeview(
             root,
             columns=("name", "price", "net", "byno", "tradable"),
@@ -187,7 +185,7 @@ class App:
 
         self.tree.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # BUTTONS
+      
         bottom = tk.Frame(root, bg="#1e1e1e")
         bottom.pack(fill="x")
 
@@ -196,14 +194,14 @@ class App:
 
         self.refresh()
 
-    # ========== REFRESH ================
+ 
     def refresh(self):
         self.tree.delete(*self.tree.get_children())
         self.items_data.clear()
 
         items = fetch_inventory()
 
-        # 🔥 Bynogame fiyatlarını 1 kere çekiyoruz
+      
         self.byno_prices = fetch_bynogame_prices()
 
         total_value = 0
@@ -212,7 +210,7 @@ class App:
             name = item["name"]
             normalized_name = name.strip().lower()
 
-            # Steam price
+         
             if name in self.price_cache:
                 price = self.price_cache[name]
             else:
@@ -222,7 +220,7 @@ class App:
             net = round(price * 0.85, 2)
             total_value += net
 
-            # Bynogame price
+          
             byno_price = self.byno_prices.get(normalized_name, "-")
 
             row_id = self.tree.insert("", "end", values=(
@@ -241,7 +239,7 @@ class App:
 
         self.total_value_label.config(text=f"Total Value: ${round(total_value,2)}")
 
-    # ========== THIRD PARTY ANALYSIS ================
+ 
     def third_party_analysis(self):
 
         selected = self.tree.selection()
@@ -249,15 +247,15 @@ class App:
             messagebox.showwarning("Uyarı", "En az bir item seçmelisin.")
             return
 
-        # ✅ FIX #4: Geliştirilmiş input validasyonu
+    
         buy_price_str = simpledialog.askstring("Alım Fiyatı", "Alım fiyatınız kaçtı? (adet başı)")
         
-        if buy_price_str is None:  # Cancel tuşuna basarsa
+        if buy_price_str is None: 
             return
         
         try:
             buy_price = float(buy_price_str)
-            if buy_price < 0:  # Negatif kontrol
+            if buy_price < 0:  
                 raise ValueError("Fiyat negatif olamaz")
         except ValueError as e:
             messagebox.showerror("Hata", f"Geçersiz fiyat girişi: {e}")
