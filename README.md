@@ -1,4 +1,4 @@
-# PriceTracker
+# Price Tracker For Steam(CS2)
 
 ## Features
 - Show all skins in your Steam inventory
